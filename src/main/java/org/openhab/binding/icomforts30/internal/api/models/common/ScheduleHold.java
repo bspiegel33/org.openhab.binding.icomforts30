@@ -45,10 +45,10 @@ public class ScheduleHold {
     public ScheduleHold(PeriodExceptionType exceptionType, Boolean scheduleHold, String expiresOn,
             PeriodExpirationMode expirationMode, Integer scheduleID) {
 
-        this.exceptionType = PeriodExceptionType.HOLD;
+        this.exceptionType = exceptionType;
         this.enabled = scheduleHold;
-        this.expiresOn = "0";
-        this.expirationMode = PeriodExpirationMode.NEXTPERIOD;
+        this.expiresOn = expiresOn;
+        this.expirationMode = expirationMode;
         this.scheduleID = scheduleID;
     }
 }

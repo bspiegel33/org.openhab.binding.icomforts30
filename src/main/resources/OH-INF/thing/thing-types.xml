@@ -28,6 +28,8 @@
 			<channel id="HumidityMode" typeId="humidityMode"/>
 			<channel id="HumiditySetPoint" typeId="humiditySetPoint"/>
 			<channel id="DehumidificationSetPoint" typeId="dehumidificationSetPoint"/>
+			<channel id="ZoneHoldExists" typeId="zoneHoldExists"/>
+			<channel id="ZoneHold" typeId="zoneHold"/>
 		</channels>
 
 		<config-description-ref uri="thing-type:lennox:zone"/>

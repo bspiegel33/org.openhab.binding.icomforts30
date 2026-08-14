@@ -162,4 +162,22 @@
 		<state step="0.5" pattern="%.1f %unit%" readOnly="false"/>
 	</channel-type>
 
+	<channel-type id="zoneHoldExists">
+		<item-type>Switch</item-type>
+		<label>Zone Hold Exists</label>
+		<description>Indicates whether a schedule hold is currently active on this zone. ON when the zone is
+			holding a setpoint against the running schedule.</description>
+		<category>heating</category>
+		<state readOnly="true"/>
+	</channel-type>
+
+	<channel-type id="zoneHold">
+		<item-type>Switch</item-type>
+		<label>Zone Hold</label>
+		<description>Controls the zone schedule hold. Send OFF to cancel the current hold and return the zone to
+			its schedule; send ON to place a hold on the zone at its current setpoints.</description>
+		<category>heating</category>
+		<state readOnly="false"/>
+	</channel-type>
+
 </thing:thing-descriptions>

@@ -117,6 +117,13 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
                 new QuantityType(heatingZone.getStatus().getPeriod().husp, Units.PERCENT));
         updateState(iComfortS30BindingConstants.ZONE_DEHUMIDIFICATION_SET_POINT_CHANNEL,
                 new QuantityType(heatingZone.getStatus().getPeriod().desp, Units.PERCENT));
+
+        // Surface the zone schedule-hold state. The device only includes scheduleHold when a hold is
+        // present, so treat a missing object or a null/false enabled flag as "no hold".
+        boolean zoneHoldActive = heatingZone.getConfig() != null && heatingZone.getConfig().scheduleHold != null
+                && Boolean.TRUE.equals(heatingZone.getConfig().scheduleHold.enabled);
+        updateState(iComfortS30BindingConstants.ZONE_HOLD_EXISTS_CHANNEL, OnOffType.from(zoneHoldActive));
+        updateState(iComfortS30BindingConstants.ZONE_HOLD_CHANNEL, OnOffType.from(zoneHoldActive));
     }
 
     @SuppressWarnings("unchecked")
@@ -131,7 +138,23 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
             iComfortS30ThermostatBridgeHandler bridge = getiComfortS30Bridge();
             String channelId = channelUID.getId();
             // ToDo
-            if (iComfortS30BindingConstants.ZONE_OPERATION_MODE_CHANNEL.equals(channelId)) {
+            if (iComfortS30BindingConstants.ZONE_HOLD_CHANNEL.equals(channelId)) {
+                if (command instanceof OnOffType) {
+                    if (command == OnOffType.OFF) {
+                        // Cancel the current hold and return the zone to its running schedule
+                        bridge.setScheduleHold(heatingZone, PeriodExceptionType.HOLD, false, "0",
+                                PeriodExpirationMode.NEXTPERIOD, getOverrideScheduleId());
+                    } else {
+                        // Place a hold at the zone's current setpoints (expires at the next scheduled period)
+                        Period period = heatingZone.getStatus().getPeriod();
+                        bridge.setScheduleOverridePeriod(heatingZone, period.hspF, period.cspC, period.hspC,
+                                period.cspF, period.spF, period.spC, period.husp, period.desp, period.humidityMode,
+                                period.systemMode, period.startTime, period.fanMode, getOverrideScheduleId());
+                        bridge.setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, "0",
+                                PeriodExpirationMode.NEXTPERIOD, getOverrideScheduleId());
+                    }
+                }
+            } else if (iComfortS30BindingConstants.ZONE_OPERATION_MODE_CHANNEL.equals(channelId)) {
                 if (command.toString() == HVACMode.HVAC_COOL.toString()
                         && heatingZone.getConfig().coolingOption == false) {
                     logger.warn("Operation mode {} is not available for zone {}", command.toString(),
