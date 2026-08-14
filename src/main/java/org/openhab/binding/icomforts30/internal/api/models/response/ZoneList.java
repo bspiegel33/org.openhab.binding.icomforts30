@@ -178,8 +178,11 @@ public class ZoneList {
         public Status humidityStatus;
 
         @SerializedName("period")
-        private Period period;
+        public Period period;
         // Class Period defined in Period.java file
+        // NOTE: this field must be public. updateIfNotNull() reads source fields reflectively
+        // without calling setAccessible on them, so a private field here is silently skipped and
+        // the period (setpoints + systemMode) never merges from incremental updates.
 
         public Period getPeriod() {
             return this.period;
