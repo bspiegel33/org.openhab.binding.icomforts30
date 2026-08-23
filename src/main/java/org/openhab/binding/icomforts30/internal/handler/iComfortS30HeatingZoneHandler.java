@@ -13,6 +13,9 @@
 
 package org.openhab.binding.icomforts30.internal.handler;
 
+import java.time.Instant;
+import java.time.ZoneId;
+
 import javax.measure.Unit;
 import javax.measure.quantity.Dimensionless;
 import javax.measure.quantity.Temperature;
@@ -27,10 +30,12 @@ import org.openhab.binding.icomforts30.internal.api.models.common.CustomTypes.Ou
 import org.openhab.binding.icomforts30.internal.api.models.common.CustomTypes.PeriodExceptionType;
 import org.openhab.binding.icomforts30.internal.api.models.common.CustomTypes.PeriodExpirationMode;
 import org.openhab.binding.icomforts30.internal.api.models.common.CustomTypes.TemperatureUnit;
+import org.openhab.binding.icomforts30.internal.api.models.common.ScheduleHold;
 import org.openhab.binding.icomforts30.internal.api.models.response.Period;
 import org.openhab.binding.icomforts30.internal.api.models.response.System;
 import org.openhab.binding.icomforts30.internal.api.models.response.ZoneList;
 import org.openhab.binding.icomforts30.internal.iComfortS30BindingConstants;
+import org.openhab.core.library.types.DateTimeType;
 import org.openhab.core.library.types.OnOffType;
 import org.openhab.core.library.types.QuantityType;
 import org.openhab.core.library.types.StringType;
@@ -57,6 +62,15 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
     private final Logger logger = LoggerFactory.getLogger(iComfortS30HeatingZoneHandler.class);
 
     private ZoneList heatingZone;
+
+    // Hold parameters used when this binding creates a hold (setpoint change, or ZoneHold ON).
+    // Set via the ZoneHoldMode / ZoneHoldExpires channels; they persist until changed.
+    private PeriodExpirationMode holdExpirationMode = PeriodExpirationMode.NEXTPERIOD;
+    private String holdExpiresOn = "0";
+
+    // Thing property keys used to persist the hold parameters across restarts.
+    private static final String PROPERTY_HOLD_MODE = "holdMode";
+    private static final String PROPERTY_HOLD_EXPIRES = "holdExpiresOn";
     private System systemInfo;
 
     public iComfortS30HeatingZoneHandler(Thing thing) {
@@ -66,6 +80,15 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
     @Override
     public void initialize() {
         super.initialize();
+        // Restore hold parameters persisted as Thing properties so they survive a restart.
+        String savedMode = getThing().getProperties().get(PROPERTY_HOLD_MODE);
+        if ("timed".equalsIgnoreCase(savedMode)) {
+            holdExpirationMode = PeriodExpirationMode.TIMED;
+        }
+        String savedExpires = getThing().getProperties().get(PROPERTY_HOLD_EXPIRES);
+        if (savedExpires != null && !savedExpires.isEmpty()) {
+            holdExpiresOn = savedExpires;
+        }
     }
 
     public void update(ZoneList heatingZone, System systemInfo) {
@@ -124,6 +147,30 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
                 && Boolean.TRUE.equals(heatingZone.getConfig().scheduleHold.enabled);
         updateState(iComfortS30BindingConstants.ZONE_HOLD_EXISTS_CHANNEL, OnOffType.from(zoneHoldActive));
         updateState(iComfortS30BindingConstants.ZONE_HOLD_CHANNEL, OnOffType.from(zoneHoldActive));
+
+        // While a hold is active, report what the DEVICE's hold is actually doing. With no hold
+        // active, report the parameters that will be used for the next hold we create.
+        if (zoneHoldActive) {
+            ScheduleHold deviceHold = heatingZone.getConfig().scheduleHold;
+            boolean deviceTimed = deviceHold.expirationMode == PeriodExpirationMode.TIMED;
+            updateState(iComfortS30BindingConstants.ZONE_HOLD_MODE_CHANNEL,
+                    new StringType(deviceTimed ? "timed" : "nextPeriod"));
+            if (deviceTimed) {
+                String expires = deviceHold.expiresOn;
+                if (expires != null && !expires.isEmpty() && !"0".equals(expires)) {
+                    try {
+                        // Device sends expiresOn as Unix epoch seconds in a string.
+                        updateState(iComfortS30BindingConstants.ZONE_HOLD_EXPIRES_CHANNEL, new DateTimeType(
+                                Instant.ofEpochSecond(Long.parseLong(expires)).atZone(ZoneId.systemDefault())));
+                    } catch (NumberFormatException e) {
+                        logger.debug("Could not parse scheduleHold.expiresOn '{}'", expires);
+                    }
+                }
+            }
+        } else {
+            updateState(iComfortS30BindingConstants.ZONE_HOLD_MODE_CHANNEL,
+                    new StringType(holdExpirationMode == PeriodExpirationMode.TIMED ? "timed" : "nextPeriod"));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -138,7 +185,31 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
             iComfortS30ThermostatBridgeHandler bridge = getiComfortS30Bridge();
             String channelId = channelUID.getId();
             // ToDo
-            if (iComfortS30BindingConstants.ZONE_HOLD_CHANNEL.equals(channelId)) {
+            if (iComfortS30BindingConstants.ZONE_HOLD_MODE_CHANNEL.equals(channelId)) {
+                // Sticky parameter: which expiration mode to use for holds this binding creates.
+                String mode = command.toString();
+                if ("timed".equalsIgnoreCase(mode)) {
+                    holdExpirationMode = PeriodExpirationMode.TIMED;
+                } else {
+                    holdExpirationMode = PeriodExpirationMode.NEXTPERIOD;
+                    holdExpiresOn = "0";
+                }
+                updateProperty(PROPERTY_HOLD_MODE,
+                        holdExpirationMode == PeriodExpirationMode.TIMED ? "timed" : "nextPeriod");
+                updateProperty(PROPERTY_HOLD_EXPIRES, holdExpiresOn);
+                updateState(iComfortS30BindingConstants.ZONE_HOLD_MODE_CHANNEL,
+                        new StringType(holdExpirationMode == PeriodExpirationMode.TIMED ? "timed" : "nextPeriod"));
+            } else if (iComfortS30BindingConstants.ZONE_HOLD_EXPIRES_CHANNEL.equals(channelId)) {
+                // Sticky parameter: when a timed hold should end. Device expects epoch seconds as a string.
+                if (command instanceof DateTimeType) {
+                    holdExpiresOn = Long.toString(((DateTimeType) command).getZonedDateTime().toEpochSecond());
+                    holdExpirationMode = PeriodExpirationMode.TIMED;
+                    updateProperty(PROPERTY_HOLD_MODE, "timed");
+                    updateProperty(PROPERTY_HOLD_EXPIRES, holdExpiresOn);
+                    updateState(iComfortS30BindingConstants.ZONE_HOLD_EXPIRES_CHANNEL, (DateTimeType) command);
+                    updateState(iComfortS30BindingConstants.ZONE_HOLD_MODE_CHANNEL, new StringType("timed"));
+                }
+            } else if (iComfortS30BindingConstants.ZONE_HOLD_CHANNEL.equals(channelId)) {
                 if (command instanceof OnOffType) {
                     if (command == OnOffType.OFF) {
                         // Cancel the current hold and return the zone to its running schedule
@@ -150,8 +221,8 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
                         bridge.setScheduleOverridePeriod(heatingZone, period.hspF, period.cspC, period.hspC,
                                 period.cspF, period.spF, period.spC, period.husp, period.desp, period.humidityMode,
                                 period.systemMode, period.startTime, period.fanMode, getOverrideScheduleId());
-                        bridge.setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, "0",
-                                PeriodExpirationMode.NEXTPERIOD, getOverrideScheduleId());
+                        bridge.setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, holdExpiresOn,
+                                holdExpirationMode, getOverrideScheduleId());
                     }
                 }
             } else if (iComfortS30BindingConstants.ZONE_OPERATION_MODE_CHANNEL.equals(channelId)) {
@@ -210,8 +281,8 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
                             period.systemMode, period.startTime, CustomTypes.FANMode.valueOf(command.toString()),
                             getOverrideScheduleId());
                     // Possible error handling
-                    getiComfortS30Bridge().setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, "0",
-                            PeriodExpirationMode.NEXTPERIOD, getOverrideScheduleId());
+                    getiComfortS30Bridge().setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, holdExpiresOn,
+                            holdExpirationMode, getOverrideScheduleId());
 
                 }
 
@@ -405,8 +476,8 @@ public class iComfortS30HeatingZoneHandler extends BaseiComfortS30Handler {
                 getiComfortS30Bridge().setScheduleOverridePeriod(heatingZone, hspF, cspC, hspC, cspF, spF, spC, husp,
                         desp, humidityMode, systemMode, startTime, fanMode, getOverrideScheduleId());
                 // Possible error handling
-                getiComfortS30Bridge().setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, "0",
-                        PeriodExpirationMode.NEXTPERIOD, getOverrideScheduleId());
+                getiComfortS30Bridge().setScheduleHold(heatingZone, PeriodExceptionType.HOLD, true, holdExpiresOn,
+                        holdExpirationMode, getOverrideScheduleId());
             }
         }
     }

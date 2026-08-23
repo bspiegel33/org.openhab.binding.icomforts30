@@ -180,4 +180,30 @@
 		<state readOnly="false"/>
 	</channel-type>
 
+	<channel-type id="zoneHoldMode">
+		<item-type>String</item-type>
+		<label>Zone Hold Mode</label>
+		<description>How a hold on this zone expires. While a hold is active this reports what the thermostat's
+			current hold is doing; with no hold active it reports what the next hold will use. Set it before
+			changing the setpoint or sending Zone Hold ON. nextPeriod ends the hold at the next scheduled event
+			(with no schedule running this is effectively permanent); timed ends it at Zone Hold Expires.</description>
+		<category>heating</category>
+		<state readOnly="false">
+			<options>
+				<option value="nextPeriod">Until next scheduled period</option>
+				<option value="timed">Until a set time</option>
+			</options>
+		</state>
+	</channel-type>
+
+	<channel-type id="zoneHoldExpires">
+		<item-type>DateTime</item-type>
+		<label>Zone Hold Expires</label>
+		<description>When a timed hold ends. While a timed hold is active this reports the thermostat's actual
+			expiry time; setting it defines when the next hold should end and switches the mode to timed. Ignored
+			when the hold mode is nextPeriod.</description>
+		<category>time</category>
+		<state readOnly="false"/>
+	</channel-type>
+
 </thing:thing-descriptions>

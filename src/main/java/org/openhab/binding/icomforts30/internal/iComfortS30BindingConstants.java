@@ -54,6 +54,8 @@ public class iComfortS30BindingConstants {
     public static final String ZONE_HOLD_EXISTS_CHANNEL = "ZoneHoldExists";
     // Read-Write channels
     public static final String ZONE_HOLD_CHANNEL = "ZoneHold";
+    public static final String ZONE_HOLD_MODE_CHANNEL = "ZoneHoldMode";
+    public static final String ZONE_HOLD_EXPIRES_CHANNEL = "ZoneHoldExpires";
     public static final String ZONE_OPERATION_MODE_CHANNEL = "OperationMode";
     public static final String ZONE_HUMIDITY_MODE_CHANNEL = "HumidityMode";
     public static final String SYSTEM_AWAY_MODE_CHANNEL = "AwayMode";

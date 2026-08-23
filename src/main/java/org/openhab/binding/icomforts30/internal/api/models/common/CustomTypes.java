@@ -419,6 +419,8 @@ public class CustomTypes {
     public enum PeriodExpirationMode {
         @SerializedName("nextPeriod")
         NEXTPERIOD,
+        @SerializedName("timed")
+        TIMED,
         UNKNOWN;
     }
 
